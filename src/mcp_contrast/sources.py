@@ -60,8 +60,18 @@ def from_file(path: Path, connect: Connect, only: str | None = None) -> list[Ser
     return [_server(name, str(path), tools, file=path, text=text)]
 
 
+def split_command(command: str) -> list[str]:
+    """Split like a shell. On Windows, keep backslashes in paths such as ``C:\\tools``."""
+    if os.name != "nt":
+        return shlex.split(command)
+    return [
+        token[1:-1] if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'" else token
+        for token in shlex.split(command, posix=False)
+    ]
+
+
 def from_stdio(command: str, connect: Connect) -> Server:
-    argv = shlex.split(command)
+    argv = split_command(command)
     if not argv:
         raise SourceError("--stdio needs a command")
     tools = list_tools_stdio(argv, timeout=connect.timeout)

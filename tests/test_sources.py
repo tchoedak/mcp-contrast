@@ -4,7 +4,15 @@ import sys
 import pytest
 
 from mcp_contrast.client import SourceError, list_tools_http, list_tools_stdio
-from mcp_contrast.sources import Connect, expand, from_file, from_http, from_stdio, snapshot
+from mcp_contrast.sources import (
+    Connect,
+    expand,
+    from_file,
+    from_http,
+    from_stdio,
+    snapshot,
+    split_command,
+)
 from tests.conftest import STDIO_SERVER
 
 CONNECT = Connect(timeout=10)
@@ -154,6 +162,17 @@ def test_vscode_config_and_legacy_sse(tmp_path) -> None:
     path.write_text(json.dumps({"servers": {"old": {"type": "sse", "url": "http://x/sse"}}}))
     with pytest.raises(SourceError, match="server 'old': legacy SSE transport is not supported"):
         from_file(path, CONNECT)
+
+
+def test_split_command_keeps_windows_paths(monkeypatch) -> None:
+    monkeypatch.setattr("mcp_contrast.sources.os.name", "nt")
+    assert split_command(r'C:\py\python.exe "D:\my dir\server.py" --flag') == [
+        r"C:\py\python.exe",
+        r"D:\my dir\server.py",
+        "--flag",
+    ]
+    monkeypatch.setattr("mcp_contrast.sources.os.name", "posix")
+    assert split_command("node 'my server.js' --x") == ["node", "my server.js", "--x"]
 
 
 def test_expand() -> None:

@@ -78,7 +78,8 @@ class _StdioSession:
         except OSError as exc:
             raise SourceError(f"could not start {command[0]!r}: {exc}") from exc
         threading.Thread(target=self._pump_stdout, daemon=True).start()
-        threading.Thread(target=self._pump_stderr, daemon=True).start()
+        self._stderr_reader = threading.Thread(target=self._pump_stderr, daemon=True)
+        self._stderr_reader.start()
 
     def _pump_stdout(self) -> None:
         assert self.proc.stdout is not None
@@ -99,9 +100,17 @@ class _StdioSession:
         except (BrokenPipeError, OSError) as exc:
             raise self._died("server closed its input") from exc
 
-    def _died(self, reason: str) -> SourceError:
-        tail = "\n".join(f"    {line}" for line in self._stderr)
+    def _died(self, reason: str, exiting: bool = True) -> SourceError:
         code = self.proc.poll()
+        if exiting:
+            # A server that closed its pipes is usually exiting; give it a moment so the
+            # exit code and its last stderr lines make it into the message.
+            try:
+                code = self.proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                code = None
+            self._stderr_reader.join(timeout=1)
+        tail = "\n".join(f"    {line}" for line in self._stderr)
         status = f" (exit code {code})" if code is not None else ""
         return SourceError(f"{reason}{status}" + (f"\n  server stderr:\n{tail}" if tail else ""))
 
@@ -120,7 +129,7 @@ class _StdioSession:
                 line = self._lines.get(timeout=self.timeout)
             except queue.Empty:
                 raise self._died(
-                    f"timed out after {self.timeout:g}s waiting for {method}"
+                    f"timed out after {self.timeout:g}s waiting for {method}", exiting=False
                 ) from None
             if line is None:
                 raise self._died(f"server exited before answering {method}")

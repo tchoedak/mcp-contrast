@@ -69,6 +69,7 @@ runs:
           sarif=(--sarif "$INPUT_SARIF")
           echo "sarif-file=$INPUT_SARIF" >> "$GITHUB_OUTPUT"
         fi
+        # The action's defaults come first so flags in `args` override them.
         uv tool run --quiet --from "$GITHUB_ACTION_PATH" mcp-contrast check \
-          ${sources[@]+"${sources[@]}"} ${extra[@]+"${extra[@]}"} \
-          --format github --fail-on "$INPUT_FAIL_ON" ${sarif[@]+"${sarif[@]}"}
+          --format github --fail-on "$INPUT_FAIL_ON" ${sarif[@]+"${sarif[@]}"} \
+          ${sources[@]+"${sources[@]}"} ${extra[@]+"${extra[@]}"}
