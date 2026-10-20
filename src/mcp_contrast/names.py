@@ -50,16 +50,30 @@ def stems(text: str) -> set[str]:
 def align(a: list[str], b: list[str]) -> Slot | None:
     """Return the one slot where two token lists differ, or None.
 
-    None means the names differ in zero places (same tokens, different spelling)
-    or in more than one place; callers distinguish the two with ``a == b``.
+    None means the names differ in zero places (same tokens, different spelling),
+    in more than one place, or share no token at all (``acr`` / ``compute`` are
+    unrelated names, not a family); callers distinguish the first with ``a == b``.
     """
-    ops = [
-        op for op in SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op[0] != "equal"
-    ]
-    if len(ops) != 1:
+    # Match on stems so get_dependabot_alert / list_dependabot_alerts differ in one
+    # slot; names that differ only in inflection (search_log / search_logs) fall back
+    # to the words themselves.
+    a_stems, b_stems = [stem(t) for t in a], [stem(t) for t in b]
+    if a_stems == b_stems:
+        a_stems, b_stems = a, b
+    opcodes = SequenceMatcher(None, a_stems, b_stems, autojunk=False).get_opcodes()
+    ops = [op for op in opcodes if op[0] != "equal"]
+    if len(ops) == len(opcodes):
         return None
-    _, i1, i2, j1, j2 = ops[0]
-    return Slot(tuple(a[i1:i2]), tuple(b[j1:j2]))
+    if len(ops) == 1:
+        _, i1, i2, j1, j2 = ops[0]
+        return Slot(tuple(a[i1:i2]), tuple(b[j1:j2]))
+    # Same words in another order: create_pull_request / pull_request_read differ
+    # by one verb, not in two places.
+    a_only = [t for t, s in zip(a, a_stems, strict=True) if s not in b_stems]
+    b_only = [t for t, s in zip(b, b_stems, strict=True) if s not in a_stems]
+    if len(a_only) == len(b_only) == 1 and len(a) == len(b) == len(set(a_stems)):
+        return Slot((a_only[0],), (b_only[0],))
+    return None
 
 
 def mentions(description_stems: AbstractSet[str], terms: tuple[str, ...]) -> bool:

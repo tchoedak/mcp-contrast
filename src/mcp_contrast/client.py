@@ -215,6 +215,8 @@ class _HttpSession:
 
     def _post(self, message: dict[str, Any]) -> Iterator[dict[str, Any]]:
         headers = {
+            # Bot protection such as Cloudflare's rejects urllib's default User-Agent.
+            "User-Agent": f"mcp-contrast/{__version__}",
             **self.headers,
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
@@ -272,7 +274,11 @@ class _HttpSession:
     def close(self) -> None:
         if not self.session_id:
             return
-        headers = {**self.headers, "Mcp-Session-Id": self.session_id}
+        headers = {
+            "User-Agent": f"mcp-contrast/{__version__}",
+            **self.headers,
+            "Mcp-Session-Id": self.session_id,
+        }
         request = urllib.request.Request(self.url, headers=headers, method="DELETE")
         with contextlib.suppress(Exception), urllib.request.urlopen(request, timeout=5):
             pass

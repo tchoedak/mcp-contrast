@@ -32,7 +32,7 @@ The names align except for one run of words, and those words are near-synonyms:
 get_user        / fetch_user           get / fetch
 list_all_deals  / list_full_deals      all / full
 get_repo_info   / get_repository_info  repo / repository
-search_logs     / search_log           logs / log
+get_users       / fetch_user           get / fetch
 ```
 
 **Why it matters.** A model assumes that different words mean different things. Given
@@ -47,8 +47,8 @@ themselves invite the wrong guess.
 
 **Synonym list.** Synonyms come from a curated list in
 [`lexicon.py`](../src/mcp_contrast/lexicon.py) (common verbs, scope modifiers, and
-abbreviations) plus a stem check that catches singular/plural pairs. Add domain words in
-your config:
+abbreviations), compared by stem so `users` matches `user`. Add domain words in your
+config:
 
 ```toml
 synonyms = [["ticket", "issue"], ["workspace", "project"]]
@@ -71,7 +71,10 @@ It also fires when:
 - the descriptions are near-identical (at or above `near-identical-threshold`, default
   0.95) even though the longer name's description mentions its extra word, because the
   shorter tool still does not say what it leaves out;
-- either tool in an aligned pair has no usable description (fewer than three words).
+- either tool in an aligned pair has no usable description (fewer than three words);
+- the names differ only by inflection (`search_log` / `search_logs`) and a description
+  does not use its own word form. `get_user` "Retrieve a user" next to `get_users` "List
+  all users" passes.
 
 **What passes.** `update_person` / `update_company` with descriptions that mention "person"
 and "company" respectively. The names differ in one slot, and each description says which

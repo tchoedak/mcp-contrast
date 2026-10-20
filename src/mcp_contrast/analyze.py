@@ -5,9 +5,12 @@ Candidate pairs come from two places: names that align in a single slot
 close. Each candidate is then classified by *how* the two tools contrast:
 
 * names differ by near-synonyms                    -> synonym-contrast
+* names differ only in inflection (user / users)   -> as a one-slot pair, but
+  each description must use its own word form
 * names differ in one slot the descriptions mark   -> clean (no finding)
 * names differ in one slot the descriptions ignore -> unmarked-contrast
-* names unrelated, descriptions near-identical     -> hidden-overlap
+* names unrelated, descriptions near-identical,
+  and neither uses a name word the other lacks     -> hidden-overlap
 
 A description that names the other tool (``use list_all_records instead
 when...``) marks the contrast explicitly and clears every rule but
@@ -16,7 +19,8 @@ name-collision.
 
 from __future__ import annotations
 
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from itertools import combinations
@@ -27,18 +31,28 @@ from mcp_contrast.config import Settings
 from mcp_contrast.embed import Embedder
 from mcp_contrast.lexicon import Lexicon
 from mcp_contrast.model import CleanContrast, Finding, Report, Server, Severity, Slot, Tool
-from mcp_contrast.names import align, mentions, references, stems, tokenize
+from mcp_contrast.names import align, references, stem, stems, tokenize
 
 # Descriptions shorter than this carry too little signal to compare.
 MIN_DESCRIPTION_TOKENS = 3
+
+# A sentence shared by this many of a server's descriptions is boilerplate.
+BOILERPLATE_MIN_TOOLS = 3
 
 
 @dataclass(frozen=True)
 class _Entry:
     tool: Tool
     tokens: tuple[str, ...]
+    text: str  # the description without server-wide boilerplate
     stems: frozenset[str]
+    words: frozenset[str]
     has_description: bool
+
+    @property
+    def compact(self) -> str:
+        """Lowercase letters and digits only, so "Function App" contains "functionapp"."""
+        return re.sub(r"[^a-z0-9]", "", self.text.lower())
 
 
 def analyze(servers: Sequence[Server], settings: Settings, embedder: Embedder) -> Report:
@@ -75,19 +89,25 @@ def analyze(servers: Sequence[Server], settings: Settings, embedder: Embedder) -
 def _analyze_group(
     tools: list[Tool], settings: Settings, embedder: Embedder, lexicon: Lexicon
 ) -> tuple[list[Finding], list[CleanContrast]]:
+    names = [tokenize(tool.name) for tool in tools]
+    prefix = _shared_prefix(names)
     entries = [
         _Entry(
             tool,
-            tuple(tokenize(tool.name)),
-            frozenset(stems(tool.description)),
-            len(tokenize(tool.description)) >= MIN_DESCRIPTION_TOKENS,
+            tuple(name[prefix:]),
+            text,
+            frozenset(stems(text)),
+            frozenset(tokenize(text)),
+            len(tokenize(text)) >= MIN_DESCRIPTION_TOKENS,
         )
-        for tool in tools
+        for tool, name, text in zip(
+            tools, names, _without_boilerplate([t.description for t in tools]), strict=True
+        )
     ]
     if len(entries) < 2:
         return [], []
 
-    texts = [e.tool.description if e.has_description else "" for e in entries]
+    texts = [e.text if e.has_description else "" for e in entries]
     vectors = embedder.embed(texts)
     similarity = vectors @ vectors.T
 
@@ -114,12 +134,49 @@ def _analyze_group(
     return findings, clean
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _without_boilerplate(descriptions: list[str]) -> list[str]:
+    """Drop sentences that recur in BOILERPLATE_MIN_TOOLS or more descriptions.
+
+    Azure MCP ends every description with the same two sentences about its command
+    router; shared text tells tools apart from nothing but inflates similarity.
+    A description that would be left too short keeps its original text.
+    """
+    split = [[s.strip() for s in _SENTENCE_END.split(d) if s.strip()] for d in descriptions]
+    counts = Counter(s for sentences in split for s in set(sentences))
+    result = []
+    for original, sentences in zip(descriptions, split, strict=True):
+        kept = " ".join(s for s in sentences if counts[s] < BOILERPLATE_MIN_TOOLS)
+        result.append(kept if len(tokenize(kept)) >= MIN_DESCRIPTION_TOKENS else original)
+    return result
+
+
+def _shared_prefix(names: list[list[str]]) -> int:
+    """How many leading tokens every name shares, such as Notion's ``API-``.
+
+    A namespace on every tool (``API-post-page``, ``slack_send_message``) tells
+    the tools apart from nothing, so it must not make unrelated names align.
+    """
+    if len(names) < 3:
+        return 0
+    shortest = min(len(name) for name in names)
+    count = 0
+    while count < shortest - 1 and len({name[count] for name in names}) == 1:
+        count += 1
+    return count
+
+
 def _name_candidates(entries: list[_Entry]) -> set[tuple[int, int]]:
-    """Pairs whose names are equal or differ by one token, found by bucketing."""
+    """Pairs whose names are equal or differ by one token, found by bucketing stems.
+
+    Stems, so ``get_users`` / ``fetch_user`` differ in one token, not two.
+    """
     exact: dict[tuple[str, ...], list[int]] = defaultdict(list)
     replaced: dict[tuple[str, ...], list[int]] = defaultdict(list)
-    for index, entry in enumerate(entries):
-        tokens = entry.tokens
+    names = [tuple(stem(t) for t in entry.tokens) for entry in entries]
+    for index, tokens in enumerate(names):
         exact[tokens].append(index)
         for k in range(len(tokens)):
             replaced[(*tokens[:k], "\0", *tokens[k + 1 :])].append(index)
@@ -128,8 +185,7 @@ def _name_candidates(entries: list[_Entry]) -> set[tuple[int, int]]:
     for bucket in (*exact.values(), *replaced.values()):
         pairs.update(combinations(sorted(set(bucket)), 2))
     # Insertions: dropping one token from a name yields another tool's name.
-    for index, entry in enumerate(entries):
-        tokens = entry.tokens
+    for index, tokens in enumerate(names):
         for k in range(len(tokens)):
             for other in exact.get((*tokens[:k], *tokens[k + 1 :]), ()):
                 if other != index:
@@ -168,7 +224,11 @@ def _classify(
 
     slot = align(list(a.tokens), list(b.tokens))
 
-    if slot is not None and lexicon.synonymous_terms(slot.a_terms, slot.b_terms):
+    if (
+        slot is not None
+        and lexicon.synonymous_terms(slot.a_terms, slot.b_terms)
+        and not _inflection(slot)
+    ):
         return Finding(
             rule="synonym-contrast",
             severity=Severity.ERROR,
@@ -188,9 +248,12 @@ def _classify(
         )
 
     if slot is not None:
-        return _classify_slot(a, b, slot, score, settings)
+        return _classify_slot(a, b, slot, score, settings, lexicon)
 
     if score is not None and score >= settings.overlap_threshold:
+        a_word, b_word = _distinctive(a, b, lexicon), _distinctive(b, a, lexicon)
+        if a_word and b_word:
+            return CleanContrast(ta, tb, score, f'descriptions mark "{a_word}" / "{b_word}"')
         return Finding(
             rule="hidden-overlap",
             severity=Severity.WARNING,
@@ -209,8 +272,29 @@ def _classify(
     return None
 
 
+def _distinctive(a: _Entry, b: _Entry, lexicon: Lexicon) -> str | None:
+    """A word from a's name that a's description uses and b's does not, if any.
+
+    Short descriptions of unrelated tools ("Create a new branch in a GitHub
+    repository" / "Get details for a commit from a GitHub repository") embed close
+    together; the name word each one uses and the other lacks is the contrast.
+    """
+    other_name = {stem(t) for t in b.tokens}
+    for token in a.tokens:
+        s = stem(token)
+        if s in other_name:
+            continue
+        if lexicon.mentions(a.stems - b.stems, (token,), b.stems):
+            return token
+        # Compound and clipped names: "functionapp" in "Function App", "postgres" in
+        # "PostgreSQL". Short tokens would match inside unrelated words.
+        if len(token) >= 4 and token in a.compact and token not in b.compact:
+            return token
+    return None
+
+
 def _classify_slot(
-    a: _Entry, b: _Entry, slot: Slot, score: float | None, settings: Settings
+    a: _Entry, b: _Entry, slot: Slot, score: float | None, settings: Settings, lexicon: Lexicon
 ) -> Finding | CleanContrast | None:
     ta, tb = a.tool, b.tool
     missing: list[Tool] = []
@@ -234,8 +318,13 @@ def _classify_slot(
     if score < settings.aligned_threshold:
         return None
 
-    a_marks = mentions(a.stems, slot.a_terms)
-    b_marks = mentions(b.stems, slot.b_terms)
+    if _inflection(slot):
+        # Stems cannot tell "user" from "users"; the word forms themselves must.
+        a_marks = all(t in a.words for t in slot.a_terms)
+        b_marks = all(t in b.words for t in slot.b_terms)
+    else:
+        a_marks = lexicon.mentions(a.stems, slot.a_terms, b.stems)
+        b_marks = lexicon.mentions(b.stems, slot.b_terms, a.stems)
 
     if slot.is_insertion:
         marked_tool, marked = (ta, a_marks) if slot.a_terms else (tb, b_marks)
@@ -278,6 +367,15 @@ def _classify_slot(
         score,
         f"{ta.name!r} and {tb.name!r} differ by {_slot_words(slot)}, but the descriptions "
         f"read the same (similarity {score:.2f}): {detail}.",
+    )
+
+
+def _inflection(slot: Slot) -> bool:
+    """True if the slot differs only in word forms: ``user`` / ``users``."""
+    return (
+        len(slot.a_terms) == len(slot.b_terms) > 0
+        and slot.a_terms != slot.b_terms
+        and all(stem(x) == stem(y) for x, y in zip(slot.a_terms, slot.b_terms, strict=True))
     )
 
 

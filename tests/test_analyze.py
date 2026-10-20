@@ -135,6 +135,82 @@ def test_hidden_overlap(settings, lexical) -> None:
     assert report.findings[0].similarity > 0.99
 
 
+def test_similar_descriptions_that_use_their_own_name_words_are_clean() -> None:
+    # GitHub MCP: short one-line descriptions embed close together (0.87).
+    a = "Create a new branch in a GitHub repository"
+    b = "Get details for a commit from a GitHub repository"
+    report = analyze(
+        [server("github", ("create_branch", a), ("get_commit", b))],
+        Settings(),
+        Scripted({frozenset((a, b)): 0.87}),
+    )
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "create" / "get"']
+
+
+def test_descriptions_may_mark_a_slot_with_a_synonym() -> None:
+    # Datadog MCP: "Retrieve ..." marks "get"; "Update ..." marks "patch".
+    a = "Retrieve specific rows from a reference table by primary key."
+    b = "Update rows in a reference table by primary key."
+    report = analyze(
+        [server("dd", ("get_reference_table_rows", a), ("patch_reference_table_rows", b))],
+        Settings(),
+        Scripted({frozenset((a, b)): 0.9}),
+    )
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "get" / "patch"']
+
+
+def test_server_wide_prefix_does_not_align_names() -> None:
+    # Notion's local server prefixes every tool with "API-".
+    a = "Create a page in Notion."
+    b = "Create a comment in Notion."
+    tools = server(
+        "notion",
+        ("API-post-page", a),
+        ("API-create-a-comment", b),
+        ("API-get-self", "Retrieve the bot user."),
+    )
+    report = analyze([tools], Settings(), Scripted({frozenset((a, b)): 0.92}))
+    # Without the prefix the names share nothing, so the pair is judged as unrelated
+    # names whose descriptions each use their own word, not as a post/create family.
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "page" / "comment"']
+
+
+def test_boilerplate_and_compound_names() -> None:
+    # Azure MCP: single-word compound names, and the same two closing sentences on
+    # every description. With the boilerplate dropped the texts differ; each still
+    # contains its own name once spaces are removed.
+    tail = " This tool is a hierarchical MCP command router. Set learn=true to discover."
+    a = "PostgreSQL operations - Manage Azure Database for PostgreSQL servers." + tail
+    b = "MySQL operations - Manage Azure Database for MySQL servers." + tail
+    c = "Function App operations - Manage Azure Functions." + tail
+    stripped = {
+        "PostgreSQL operations - Manage Azure Database for PostgreSQL servers.",
+        "MySQL operations - Manage Azure Database for MySQL servers.",
+    }
+    report = analyze(
+        [server("azure", ("postgres", a), ("mysql", b), ("functionapp", c))],
+        Settings(),
+        Scripted({frozenset(stripped): 0.98}),
+    )
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "postgres" / "mysql"']
+
+
+def test_names_align_across_plurals() -> None:
+    a = "Get details of a specific Dependabot alert in a repository."
+    b = "List Dependabot alerts in a repository."
+    report = analyze(
+        [server("github", ("get_dependabot_alert", a), ("list_dependabot_alerts", b))],
+        Settings(),
+        Scripted({frozenset((a, b)): 0.94}),
+    )
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "get" / "list"']
+
+
 def test_unrelated_tools_with_dissimilar_descriptions_pass(settings, lexical) -> None:
     report = analyze(
         [
@@ -271,7 +347,7 @@ def test_documented_synonym_examples(settings, lexical) -> None:
         ("get_user", "fetch_user"),
         ("list_all_deals", "list_full_deals"),
         ("get_repo_info", "get_repository_info"),
-        ("search_logs", "search_log"),
+        ("get_users", "fetch_user"),
     ]
     for a, b in pairs:
         report = analyze(
@@ -280,3 +356,26 @@ def test_documented_synonym_examples(settings, lexical) -> None:
             lexical,
         )
         assert rules(report) == [("synonym-contrast", a, b)], (a, b)
+
+
+def test_plural_pair_passes_when_descriptions_use_their_own_form() -> None:
+    # Notion's API-get-user / API-get-users.
+    a, b = "Retrieve a user", "List all users"
+    report = analyze(
+        [server("notion", ("get_user", a), ("get_users", b))],
+        Settings(),
+        Scripted({frozenset((a, b)): 0.8}),
+    )
+    assert report.findings == ()
+    assert [c.reason for c in report.clean] == ['descriptions mark "user" / "users"']
+
+
+def test_plural_pair_is_unmarked_when_descriptions_read_the_same() -> None:
+    a, b = "Search log lines by query.", "Search log lines by query across services."
+    report = analyze(
+        [server("s", ("search_log", a), ("search_logs", b))],
+        Settings(),
+        Scripted({frozenset((a, b)): 0.9}),
+    )
+    assert rules(report) == [("unmarked-contrast", "search_log", "search_logs")]
+    assert "'search_logs' never mentions \"logs\"" in report.findings[0].message

@@ -37,8 +37,9 @@ crm (10 tools)
 
 ## Why
 
-Linguists call it the *principle of contrast* (Eve Clark): listeners assume that two
-different words mean two different things. Models do the same. Given `get_user` and
+Linguists call it the *principle of contrast*: listeners assume that two different words
+mean two different things. Eve Clark proposed it to explain how children learn words
+([Clark 1987](#references)), and it is the idea this project is built on. Models do the same. Given `get_user` and
 `fetch_user`, a model looks for a difference, finds none in the descriptions, and picks
 one at random.
 
@@ -253,6 +254,13 @@ Other MCP linters cover ground this one does not; they work well alongside it.
   fuzzing.
 - [mcp-tef](https://github.com/StacklokLabs/mcp-tef): an evaluation service with
   embedding similarity matrices and LLM-based tool-selection tests.
+
+## References
+
+- Clark, E. V. (1987). The principle of contrast: A constraint on language acquisition.
+  In B. MacWhinney (Ed.),
+  [*Mechanisms of Language Acquisition*](https://www.routledge.com/Mechanisms-of-Language-Acquisition-The-20th-Annual-Carnegie-Mellon-Symposium-on-Cognition/MacWhinney/p/book/9780898599732)
+  (pp. 1-33). Lawrence Erlbaum Associates.
 
 ## Contributing
 

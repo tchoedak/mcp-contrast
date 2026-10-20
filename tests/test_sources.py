@@ -124,6 +124,15 @@ def test_http_auth_header(auth_http_server) -> None:
     assert len(tools) == 2
 
 
+def test_http_sends_own_user_agent(auth_http_server) -> None:
+    # Cloudflare bot protection rejects urllib's default "Python-urllib/3.x" (error 1010).
+    url, handler = auth_http_server
+    list_tools_http(url, headers={"Authorization": "Bearer s3cret"}, timeout=10)
+    assert all(h["User-Agent"].startswith("mcp-contrast/") for h in handler.seen_headers)
+    list_tools_http(url, headers={"Authorization": "Bearer s3cret", "User-Agent": "x"}, timeout=10)
+    assert handler.seen_headers[-1]["User-Agent"] == "x"
+
+
 def test_http_rejects_non_http_url() -> None:
     with pytest.raises(SourceError, match="needs an http"):
         from_http("ftp://example.com", CONNECT)

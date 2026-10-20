@@ -54,6 +54,20 @@ def test_align_rejects_two_differences() -> None:
     assert align(["get", "user", "info"], ["fetch", "user", "details"]) is None
 
 
+def test_align_reordered_names() -> None:
+    # GitHub MCP: create_pull_request next to pull_request_read.
+    assert align(["create", "pull", "request"], ["pull", "request", "read"]) == Slot(
+        ("create",), ("read",)
+    )
+    assert align(["get", "user", "info"], ["info", "fetch", "team"]) is None
+
+
+def test_align_requires_a_shared_token() -> None:
+    # Azure MCP has 69 single-word tools; each pair is unrelated, not a one-slot family.
+    assert align(["acr"], ["compute"]) is None
+    assert align(["storage", "account"], ["blob", "container"]) is None
+
+
 def test_align_identical_tokens_is_none() -> None:
     assert align(["get", "user"], ["get", "user"]) is None
 
