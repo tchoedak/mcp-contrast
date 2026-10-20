@@ -1,0 +1,74 @@
+name: mcp-contrast
+description: Lint MCP servers for tools a model cannot tell apart.
+author: tchoedak
+branding:
+  icon: git-pull-request
+  color: blue
+
+inputs:
+  sources:
+    description: >
+      Space-separated tool snapshots (tools/list JSON) or client configs (.mcp.json) to lint.
+      Leave empty when passing --stdio or --http through `args`.
+    required: false
+    default: ""
+  args:
+    description: >
+      Extra arguments, parsed with shell quoting, e.g.
+      `--stdio 'node dist/index.js' --config mcp-contrast.toml`.
+    required: false
+    default: ""
+  fail-on:
+    description: Lowest severity that fails the step (error, warning, info, never).
+    required: false
+    default: error
+  sarif-file:
+    description: >
+      Also write SARIF here, for github/codeql-action/upload-sarif. Empty to skip.
+    required: false
+    default: mcp-contrast.sarif
+  working-directory:
+    description: Directory to run in.
+    required: false
+    default: .
+
+outputs:
+  sarif-file:
+    description: Path of the SARIF file, if one was written.
+    value: ${{ steps.check.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+    - name: Cache embedding model
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/huggingface/hub/models--minishlab--potion-base-8M
+        key: mcp-contrast-model-potion-base-8M-bf8b056651a2
+
+    - name: Run mcp-contrast
+      id: check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_SOURCES: ${{ inputs.sources }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_SARIF: ${{ inputs.sarif-file }}
+      run: |
+        set -euo pipefail
+        # The ${x[@]+...} forms keep empty arrays safe under `set -u` on macOS's bash 3.2.
+        read -r -a sources <<< "$INPUT_SOURCES"
+        # Shell-style parsing so `--stdio 'node server.js'` stays one argument.
+        eval "extra=($INPUT_ARGS)"
+        sarif=()
+        if [[ -n "$INPUT_SARIF" ]]; then
+          sarif=(--sarif "$INPUT_SARIF")
+          echo "sarif-file=$INPUT_SARIF" >> "$GITHUB_OUTPUT"
+        fi
+        uv tool run --quiet --from "$GITHUB_ACTION_PATH" mcp-contrast check \
+          ${sources[@]+"${sources[@]}"} ${extra[@]+"${extra[@]}"} \
+          --format github --fail-on "$INPUT_FAIL_ON" ${sarif[@]+"${sarif[@]}"}

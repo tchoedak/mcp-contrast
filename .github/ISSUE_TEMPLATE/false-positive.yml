@@ -1,0 +1,37 @@
+name: False positive or miss
+description: A pair was flagged that a model can tell apart, or a confusable pair was not flagged.
+labels: [accuracy]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What happened
+      options:
+        - Flagged, but a model can tell these tools apart (false positive)
+        - Not flagged, but a model confuses these tools (miss)
+    validations:
+      required: true
+  - type: textarea
+    id: tools
+    attributes:
+      label: The two tool definitions
+      description: Name and description of each tool, or a link to the server.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output of `mcp-contrast check ... --format json`
+      render: json
+  - type: textarea
+    id: why
+    attributes:
+      label: Why a model can (or cannot) tell them apart
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mcp-contrast version
+      placeholder: mcp-contrast --version

@@ -1,0 +1,14 @@
+{
+  "tools": [
+    {"name": "get_person", "description": "Get a person record from the CRM by id, including name, email, and owner."},
+    {"name": "fetch_person", "description": "Fetch a person record from the CRM by id with all fields."},
+    {"name": "update_person", "description": "Update fields on a person record in the CRM."},
+    {"name": "update_company", "description": "Update fields on a company record in the CRM."},
+    {"name": "list_deals", "description": "List deals in the pipeline, newest first."},
+    {"name": "list_all_deals", "description": "List deals in the pipeline, newest first, with optional filters."},
+    {"name": "search_notes", "description": "Search notes attached to people and companies by keyword."},
+    {"name": "find_notes_by_text", "description": "Search notes attached to people and companies by keyword."},
+    {"name": "delete_person", "description": "Permanently delete a person record. Use archive_person instead when the record may be needed later."},
+    {"name": "archive_person", "description": "Archive a person record so it is hidden but recoverable."}
+  ]
+}

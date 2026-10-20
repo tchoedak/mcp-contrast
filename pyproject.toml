@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-contrast"
+dynamic = ["version"]
+description = "Lint MCP servers for tools a model cannot tell apart: synonym names, hidden overlaps, and unmarked contrasts."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Tenzin Choedak" }]
+keywords = ["mcp", "model-context-protocol", "lint", "llm", "agents", "tool-use", "ci"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "model2vec>=0.6,<1",
+    "numpy>=1.26",
+    "huggingface-hub>=0.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/tchoedak/mcp-contrast"
+Documentation = "https://github.com/tchoedak/mcp-contrast#readme"
+Issues = "https://github.com/tchoedak/mcp-contrast/issues"
+Source = "https://github.com/tchoedak/mcp-contrast"
+
+[project.scripts]
+mcp-contrast = "mcp_contrast.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.hatch.version]
+path = "src/mcp_contrast/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["model: downloads and runs the default embedding model (network on first run)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PT", "C4", "PTH"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["model2vec.*"]
+ignore_missing_imports = true

@@ -1,0 +1,23 @@
+name: Bug report
+description: Something crashed or behaved wrongly (not an accuracy question).
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command and input to reproduce
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mcp-contrast version, OS, and Python version
+    validations:
+      required: true

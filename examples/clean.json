@@ -1,0 +1,9 @@
+{
+  "tools": [
+    {"name": "list_deals", "description": "List the first page of deals in the pipeline, newest first. Use list_all_deals to export every page."},
+    {"name": "list_all_deals", "description": "List every deal in the pipeline across all pages. Slower; meant for exports."},
+    {"name": "update_person", "description": "Update fields on a person record in the CRM."},
+    {"name": "update_company", "description": "Update fields on a company record in the CRM."},
+    {"name": "send_email", "description": "Send an email to one or more contacts."}
+  ]
+}
