@@ -39,9 +39,9 @@ crm (10 tools)
 
 Linguists call it the *principle of contrast*: listeners assume that two different words
 mean two different things. Eve Clark proposed it to explain how children learn words
-([Clark 1987](#references)), and it is the idea this project is built on. Models do the same. Given `get_user` and
-`fetch_user`, a model looks for a difference, finds none in the descriptions, and picks
-one at random.
+([Clark 1987](#references)), and it is the idea this project is built on. Models do the
+same. Given `get_user` and `fetch_user`, a model looks for a difference, finds none in the
+descriptions, and picks one at random.
 
 The naive fix, flagging tools whose descriptions are similar, does not work. Well-designed
 families like `update_person` / `update_company` are *supposed* to look alike: they
@@ -60,6 +60,31 @@ names differ, and do the descriptions say so?**
 | `search_notes` / `find_notes_by_text` | no shared structure | near-identical | `hidden-overlap` |
 | `read_file` / `read_text_file` | inserted "text" | `read_file` says "use read_text_file instead" | clean |
 
+### Compared with other MCP linters
+
+Several linters flag confusable tools. They differ in how they decide two tools are too
+alike:
+
+| | How it finds confusable tools | Catches paraphrases | Lets clean families pass | Reads | Also checks |
+|---|---|---|---|---|---|
+| **mcp-contrast** | Description embeddings, plus where the names differ and whether each description states it | Yes (embeddings) | Yes: each description must use its own differing word | Snapshots, client configs, live stdio and HTTP servers | Nothing else |
+| [lintlang](https://github.com/hermes-labs-ai/lintlang) | Word overlap (Jaccard), plus a synonym list over name and description terms | Partly, through its synonym list | Yes, when each tool has a term the other lacks | MCP and tool definitions in repository files | Prompts, schemas, skills |
+| [mcplint](https://github.com/antonsoo/mcplint) | Descriptions with 75% or more word overlap | No | No word-level check | Live stdio servers, client configs | Token cost, naming, schemas, hidden text |
+| [mcp-lint](https://github.com/hahahahahahahahah6/mcp-lint) | Names that are reordered, plural, or close by edit distance | No | No word-level check | `tools.json` | Per-tool design scores |
+| [mcp-doctor](https://github.com/vishalhabib99/mcp-doctor) | Identical descriptions after normalizing | No | Yes, by flagging only exact copies | Server source code, live `tools/list` | Quality grades, fuzzing, fixes |
+| [mcp-tef](https://github.com/StacklokLabs/mcp-tef) | Embedding similarity matrices and LLM tool-selection tests | Yes | Not automatically: it reports scores to review | A running evaluation service | LLM selection accuracy |
+
+What `mcp-contrast` adds is the per-word check. Word overlap can't tell
+`update_person` / `update_company` (a good family) from `list_deals` / `list_all_deals`
+(an unexplained difference), because both pairs share almost every word. Exact matching
+misses paraphrases. LLM evaluation catches both but needs a model and a running service.
+`mcp-contrast` runs in CI in under a second with a 30 MB static model and no API key, and
+each finding names the exact word a description fails to explain.
+
+It does only this one check. Use it alongside a broader linter: lintlang, mcplint, or
+mcp-doctor for schemas, safety, and token cost, and mcp-tef to measure real selection
+accuracy with a model.
+
 ## Install
 
 ```sh
@@ -67,9 +92,6 @@ uvx mcp-contrast check tools.json          # run without installing
 pipx install mcp-contrast                  # or install the CLI
 pip install mcp-contrast                   # or into an environment
 ```
-
-Until the first PyPI release, install from GitHub:
-`uvx --from git+https://github.com/tchoedak/mcp-contrast mcp-contrast check tools.json`.
 
 Requires Python 3.11+. No PyTorch, no GPU, no API keys.
 
@@ -240,20 +262,6 @@ paraphrases).
 - **Legacy HTTP+SSE servers are not supported.** Use Streamable HTTP, stdio, or a snapshot.
 - Code scanning needs file locations, so live `--stdio`/`--http` findings carry none.
   Lint a snapshot or a client config to get annotations on a line.
-
-## Related projects
-
-Other MCP linters cover ground this one does not; they work well alongside it.
-
-- [mcplint](https://github.com/antonsoo/mcplint): token cost, naming rules, word-overlap
-  near-duplicates, hidden instructions.
-- [lintlang](https://github.com/Katerina637/lintlang): static checks for tool
-  descriptions, schemas, and agent prompts.
-- [mcp-lint](https://github.com/hahahahahahahahah6/mcp-lint): per-tool design scores.
-- [mcp-doctor](https://github.com/vishalhabib99/mcp-doctor): server quality checks and
-  fuzzing.
-- [mcp-tef](https://github.com/StacklokLabs/mcp-tef): an evaluation service with
-  embedding similarity matrices and LLM-based tool-selection tests.
 
 ## References
 
