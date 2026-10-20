@@ -188,13 +188,23 @@ def _line_of(text: str, pattern: str) -> int | None:
 
 def _command_name(argv: list[str]) -> str:
     """A readable server name: the package or script, not the launcher."""
-    launchers = {"npx", "uvx", "pipx", "bunx", "node", "python", "python3", "uv", "deno", "docker"}
     for arg in argv:
-        base = Path(arg).name
-        if base in launchers or arg.startswith("-") or base in {"run", "tool", "-y"}:
+        base = re.split(r"[\\/]", arg)[-1]
+        if (
+            arg.startswith("-")
+            or _LAUNCHER.fullmatch(base.lower())
+            or not re.search("[A-Za-z]", base)
+        ):
             continue
         return re.sub(r"@[^/@]*$", "", base) or base
-    return Path(argv[0]).name
+    return re.split(r"[\\/]", argv[0])[-1]
+
+
+# Interpreters and runners to skip when naming a server after its command, with
+# optional versions (python3.13) and Windows suffixes (npx.cmd, node.exe).
+_LAUNCHER = re.compile(
+    r"(npx|uvx|pipx|bunx|bun|node|deno|uv|docker|run|tool|python[0-9.]*|py)(\.exe|\.cmd|\.bat)?"
+)
 
 
 def snapshot(server: Server) -> dict[str, Any]:

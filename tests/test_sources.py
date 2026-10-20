@@ -190,3 +190,21 @@ def test_snapshot_keeps_full_tool_objects() -> None:
         "description": "Get a user by id.",
         "inputSchema": {"type": "object"},
     }
+
+
+@pytest.mark.parametrize(
+    ("command", "name"),
+    [
+        ("npx -y @modelcontextprotocol/server-memory", "server-memory"),
+        ("npx.cmd -y @scope/pkg@1.2.3", "pkg"),
+        (r"C:\Python313\python.exe D:\srv\server.py", "server.py"),
+        ("python3.13 -m my_server", "my_server"),
+        ("uv run --directory . serve", "serve"),
+        ("docker run -i --rm mcp/github", "github"),
+        ("./bin/my-server --port 1", "my-server"),
+    ],
+)
+def test_server_names_skip_launchers(command, name) -> None:
+    from mcp_contrast.sources import _command_name
+
+    assert _command_name(command.split()) == name
